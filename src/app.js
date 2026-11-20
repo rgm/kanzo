@@ -159,6 +159,8 @@ const ICONS = {
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/>',
+  blocks: '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+  deps: '<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h4a3 3 0 0 1 3 3v6"/>',
   human: '<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1"/>',
   url: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   github: '<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.1-1.3-.3-2.5-1-3.5.3-1.2.3-2.4 0-3.5 0 0-1 0-3 1.5a12 12 0 0 0-8 0C6 2 5 2 5 2c-.3 1.2-.3 2.4 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.4.5-.7 1-.8 1.7-.2.6-.3 1.2-.2 1.8v4"/><path d="M9 18c-4.5 2-5-2-7-2"/>',
@@ -667,6 +669,7 @@ function renderHeader() {
   const header = $("#header");
   $("#new-task").hidden = !projects.length;
   $("#human-only").hidden = !projects.length || isPropertyHidden("human");
+  $("#deps").hidden = !projects.length || isPropertyHidden("waiting");
   $("#filter-box").hidden = !projects.length;
   $("#view").hidden = !projects.length;
   $("#view").setAttribute("aria-pressed", String(isList()));
@@ -675,6 +678,9 @@ function renderHeader() {
       el("button", { type: "button", title: tr(`Remove "{0}"`, f), "aria-label": tr("Remove the filter {0}", f),
                      onclick: () => setFilters(savedFilters().filter((_, j) => j !== i)) }, icon("close")))));
   $("#human-only").setAttribute("aria-pressed", String(isHumanOnly()));
+  $("#deps").setAttribute("aria-pressed", String(showDeps()));
+  document.documentElement.toggleAttribute("data-deps", showDeps() && projects.length > 0);
+  $("#deps").title = tr(showDeps() ? "Hide dependencies (d)" : "Show dependencies (d)");
   if (!projects.length) { header.replaceChildren(); return; }
   const open = (n) => plural(n, "open task");
   if (!p) {
@@ -743,6 +749,9 @@ function renderColumns() {
   if (state.dragging || state.sweeping || state.settling) return;
   const all = state.project === "all";
   const humanOnly = isHumanOnly();
+  // Who has an open task waiting on it, from the tasks loaded.
+  state.blocking = new Map();
+  for (const t of tasks) if (t.status !== "done") for (const b of t.waiting_on || []) state.blocking.set(b, [...(state.blocking.get(b) || []), t.id]);
   const query = filterQuery();
   $("#filter").classList.toggle("on", query.length > 0);
   // Filtered, the server's count of older done tasks says nothing about human ones.
@@ -765,6 +774,7 @@ function renderColumns() {
     }
   }
   highlight("filter", inList ? $("#list") : columns, wordsOf(query));
+  markDeps(document.querySelector(".card:hover"));
   for (const id of [...state.selected]) {
     if (!document.querySelector(`.card[data-id="${id}"]`)) state.selected.delete(id);
   }
@@ -1004,6 +1014,14 @@ function waitChip(t) {
   return t.waiting_on ? el("span", { class: "waits" }, icon("waits"), `Waits on ${t.waiting_on.map((id) => `#${id}`).join(", ")}`) : null;
 }
 
+// What waits on this task, on cards with dependencies shown. Long lists stop at three.
+function blockChip(t) {
+  const ids = showDeps() && state.blocking?.get(t.id);
+  if (!ids) return null;
+  const more = ids.length > 3 ? ` +${ids.length - 3}` : "";
+  return el("span", { class: "blocks" }, icon("blocks"), `Blocks ${ids.slice(0, 3).map((id) => `#${id}`).join(", ")}${more}`);
+}
+
 // A board on an older version sends no hidden_properties.
 function isPropertyHidden(property) {
   return (state.board?.hidden_properties || []).includes(property);
@@ -1011,6 +1029,36 @@ function isPropertyHidden(property) {
 
 function isHumanOnly() {
   return localStorageGet("kanzo.humanOnly") === "1" && !isPropertyHidden("human");
+}
+
+function showDeps() {
+  return localStorageGet("kanzo.deps") === "1" && !isPropertyHidden("waiting");
+}
+
+// The card under the pointer or focus, else the open one, marks its direct links: what it waits on and what waits on it.
+// Links to cards that are collapsed or not loaded are counted on the card.
+function markDeps(card) {
+  document.querySelectorAll(".dep-hot, .dep-wait, .dep-block").forEach((c) => c.classList.remove("dep-hot", "dep-wait", "dep-block"));
+  document.querySelectorAll(".card[data-dep-hidden]").forEach((c) => c.removeAttribute("data-dep-hidden"));
+  if (!showDeps()) return;
+  const target = card || (state.task && document.querySelector(`.card[data-id="${state.task}"]`));
+  const t = target && state.board.tasks.find((x) => x.id === Number(target.dataset.id));
+  if (!t) return;
+  target.classList.add("dep-hot");
+  let hidden = 0;
+  const mark = (ids, cls) => ids.forEach((i) => {
+    const c = document.querySelector(`.card[data-id="${i}"]`);
+    if (c?.offsetParent) c.classList.add(cls); else hidden++;
+  });
+  mark(t.waiting_on || [], "dep-block");
+  mark(state.blocking?.get(t.id) || [], "dep-wait");
+  if (hidden) target.setAttribute("data-dep-hidden", tr("{0} out of view", hidden));
+}
+for (const box of [$("#columns"), $("#list")]) {
+  box.addEventListener("mouseover", (e) => markDeps(e.target.closest(".card")));
+  box.addEventListener("mouseleave", () => markDeps(null));
+  box.addEventListener("focusin", (e) => markDeps(e.target.closest(".card")));
+  box.addEventListener("focusout", () => markDeps(null));
 }
 
 function setHumanOnly(humanOnly) {
@@ -1132,8 +1180,9 @@ async function spread(group, grabbed, from, place) {
 
 // In the list, a row: no drag to reorder, since a sorted list has no one position to drop into.
 function card(t, showProject, row) {
-  const node = el("div", { class: "card" + (row ? " row" : "") + (state.task === t.id ? " open" : "") + (t.waiting_on ? " waiting" : "") + (state.selected.has(t.id) ? " selected" : ""),
-                           draggable: row ? null : "true", "data-id": t.id,
+  const node = el("div", { class: "card" + (row ? " row" : "") + (state.task === t.id ? " open" : "") + (t.waiting_on ? " waiting" : "") + (state.blocking?.has(t.id) ? " blocking" : "") + (state.selected.has(t.id) ? " selected" : ""),
+                           draggable: row ? null : "true", "data-id": t.id, tabindex: showDeps() ? "0" : null,
+                           onkeydown: (e) => { if (e.target === node && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTask(t.id); } },
                            onclick: (e) => { if (e.metaKey || e.ctrlKey) toggleSelected(t.id); else openTask(t.id); } },
     row ? statusIcon(t.status) : null,
     el("div", { class: "head" },
@@ -1141,7 +1190,7 @@ function card(t, showProject, row) {
       t.human ? el("span", { class: "human-mark", title: tr("Human task: agents skip it") }, icon("human")) : null,
       el("span", { class: "num", title: tr("Copy {0}", key(t)), onclick: (e) => { e.stopPropagation(); copyKey(key(t)); } },
         showProject ? el("span", { class: "dot", style: `background:${projectColor(t.project)}` }) : null, `#${t.id}`)),
-    ...summary(t, waitChip(t), urlChip(t)).slice(row ? 1 : 0));
+    ...summary(t, waitChip(t), blockChip(t), urlChip(t)).slice(row ? 1 : 0));
   node.addEventListener("dragstart", (e) => {
     state.dragging = t.id;
     e.dataTransfer.effectAllowed = "move";
@@ -1298,6 +1347,7 @@ $("#ask-cancel").addEventListener("click", () => answerAsk?.(false));
 
 $("#new-task").addEventListener("click", newTask);
 $("#human-only").addEventListener("click", () => setHumanOnly(!isHumanOnly()));
+$("#deps").addEventListener("click", () => { localStorageSet("kanzo.deps", showDeps() ? "0" : "1"); markDeps(null); render(); });
 let filterTimer;
 $("#filter").addEventListener("input", () => { clearTimeout(filterTimer); filterTimer = setTimeout(loadBoard, 120); });
 $("#filter").addEventListener("keydown", (e) => {
@@ -1334,6 +1384,7 @@ async function openTask(id) {
   state.task = id;
   document.querySelectorAll(".card.open").forEach((c) => c.classList.remove("open"));
   document.querySelector(`.card[data-id="${id}"]`)?.classList.add("open");
+  markDeps(document.querySelector(".card:hover"));
   $("#p-comment").value = drafts.get(id) || "";
   pending = [];
   renderPending();
@@ -1359,6 +1410,7 @@ function closeTask() {
   panel.classList.remove("shown");
   panel.setAttribute("aria-hidden", "true");
   document.querySelectorAll(".card.open").forEach((c) => c.classList.remove("open"));
+  markDeps(document.querySelector(".card:hover"));
 }
 
 async function refreshTask() {
@@ -1823,6 +1875,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "n" && plain && !$("#new-task").hidden) { e.preventDefault(); newTask(); }
   if (e.key === "f" && plain && !$("#filter-box").hidden) { e.preventDefault(); $("#filter").focus(); }
+  if (e.key === "d" && plain && !$("#deps").hidden) { e.preventDefault(); $("#deps").click(); }
   if (e.key === "h" && plain && !$("#human-only").hidden) { e.preventDefault(); setHumanOnly(!isHumanOnly()); }
 });
 

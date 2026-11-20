@@ -28,6 +28,13 @@ const ZH_CN = {
   "Filter the board": "筛选看板",
   "Show only the tasks that match, like tag:bug or -status:done (f)": "只显示匹配的任务，例如 tag:bug 或 -status:done（f）",
   "Show only human tasks (h)": "只显示人工任务（h）",
+  "Hide dependencies (d)": "隐藏依赖（d）",
+  "Waits on another task": "等待其他任务",
+  "Blocks another task": "阻塞其他任务",
+  "Hover, focus or open a task to trace its links": "悬停、聚焦或打开任务以查看其关联",
+  "{0} out of view": "{0} 个不在视野内",
+  "Show dependencies (d)": "显示依赖（d）",
+  "Show dependencies": "显示依赖",
   "Show only human tasks": "只显示人工任务",
   "Board not reachable — is kanzo running?": "看板连不上——kanzo 还在运行吗？",
 

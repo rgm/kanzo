@@ -24,7 +24,7 @@
   --field: #f4f4f4; --hover: #ececec; --active: #e5e5e5; --menu: #ffffff;
   --text: #0d0d0d; --muted: #5d5d5d; --faint: #8f8f8f; --border: #e5e5e5; --card-border: #ebebeb;
   --accent: #0d0d0d; --accent-text: #ffffff; --danger: #dc2626; --danger-bg: rgba(220, 38, 38, .08);
-  --waits: #b45309; --link: #2563eb; --code: #f2f2f2; --shadow: 0 10px 30px rgba(0,0,0,.12);
+  --dep-tint: 22%; --waits: #b45309; --link: #2563eb; --code: #f2f2f2; --shadow: 0 10px 30px rgba(0,0,0,.12);
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -32,7 +32,7 @@
   --field: #171717; --hover: #1a1a1a; --active: #242424; --menu: #1c1c1c;
   --text: #ececec; --muted: #a1a1a1; --faint: #6e6e6e; --border: #1f1f1f; --card-border: transparent;
   --accent: #ffffff; --accent-text: #000000; --danger: #f87171; --danger-bg: rgba(248, 113, 113, .1);
-  --waits: #f5a524; --link: #7ab7ff; --code: #1c1c1c; --shadow: 0 10px 30px rgba(0,0,0,.6);
+  --dep-tint: 34%; --waits: #f5a524; --link: #7ab7ff; --code: #1c1c1c; --shadow: 0 10px 30px rgba(0,0,0,.6);
   color-scheme: dark;
 }
 * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--active) transparent; }
@@ -156,7 +156,7 @@ header .repo-link {
 }
 header .repo-link:hover, header .repo-link:focus-visible { background: var(--active); color: var(--text); }
 header .repo-link .icon svg { width: 14px; height: 14px; }
-#network, #human-only, #view { width: auto; height: 35px; min-width: 35px; padding: 0 8px; justify-content: center; border-radius: 99px; }
+#network, #human-only, #deps, #view { width: auto; height: 35px; min-width: 35px; padding: 0 8px; justify-content: center; border-radius: 99px; }
 #network { gap: 6px; color: var(--muted); font-size: 13px; }
 #network:hover, #network:focus-visible, #network.open { color: var(--text); }
 #network.on { padding: 0 12px 0 10px; background: color-mix(in srgb, #2f9e44 14%, transparent); color: #2f9e44; font-weight: 500; }
@@ -198,10 +198,10 @@ header .repo-link .icon svg { width: 14px; height: 14px; }
 .chip button:hover { background: color-mix(in srgb, var(--link) 20%, transparent); }
 .chip .icon svg { width: 13px; height: 13px; }
 ::highlight(filter), ::highlight(search) { background-color: color-mix(in srgb, var(--link) 25%, transparent); }
-#human-only, #view { color: var(--muted); }
-#human-only:hover, #human-only:focus-visible, #view:hover, #view:focus-visible { color: var(--text); }
-#human-only[aria-pressed="true"], #view[aria-pressed="true"] { background: color-mix(in srgb, var(--link) 14%, transparent); color: var(--link); }
-#human-only[aria-pressed="true"]:hover, #human-only[aria-pressed="true"]:focus-visible, #view[aria-pressed="true"]:hover, #view[aria-pressed="true"]:focus-visible {
+#human-only, #deps, #view { color: var(--muted); }
+#human-only:hover, #human-only:focus-visible, #deps:hover, #deps:focus-visible, #view:hover, #view:focus-visible { color: var(--text); }
+#human-only[aria-pressed="true"], #deps[aria-pressed="true"], #view[aria-pressed="true"] { background: color-mix(in srgb, var(--link) 14%, transparent); color: var(--link); }
+#human-only[aria-pressed="true"]:hover, #human-only[aria-pressed="true"]:focus-visible, #deps[aria-pressed="true"]:hover, #deps[aria-pressed="true"]:focus-visible, #view[aria-pressed="true"]:hover, #view[aria-pressed="true"]:focus-visible {
   background: color-mix(in srgb, var(--link) 22%, transparent);
 }
 .columns {
@@ -251,6 +251,32 @@ html:not([data-hide~="waiting"]) .card.waiting:not(:hover) { opacity: .6; }
 .pick span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; white-space: nowrap; pointer-events: none; }
 #list-tools #list-sort { padding-left: 64px; }
 #list-tools #list-group { padding-left: 75px; }
+/* Dependencies on: waiting cards get a dashed amber stripe, blocking cards a solid red one, both cards both.
+   Waiting cards dim their content, not the card, so a stripe keeps its colour. Hovering or opening a card tints it and its direct links. */
+html[data-deps] .card { position: relative; }
+html[data-deps] .card.waiting { background-image: repeating-linear-gradient(180deg, var(--waits) 0 6px, transparent 6px 9px); background-size: 4px 100%; background-repeat: no-repeat; }
+html[data-deps] .card.blocking { background-image: linear-gradient(var(--danger), var(--danger)); background-size: 4px 100%; background-repeat: no-repeat; }
+html[data-deps] .card.waiting.blocking {
+  background-image: linear-gradient(var(--danger), var(--danger)), repeating-linear-gradient(180deg, var(--waits) 0 6px, transparent 6px 9px);
+  background-size: 4px 100%, 4px 100%; background-position: 0 0, 6px 0;
+}
+html[data-deps] .card.waiting:not(:hover) { opacity: 1; }
+html[data-deps] .card.waiting:not(:hover) > * { opacity: .72; }
+html[data-deps] .card.waiting.dep-wait > *, html[data-deps] .card.waiting.dep-block > * { opacity: 1; }
+html[data-deps] .card.dep-wait { background-color: color-mix(in srgb, var(--waits) var(--dep-tint), var(--card)); }
+html[data-deps] .card.dep-block { background-color: color-mix(in srgb, var(--danger) var(--dep-tint), var(--card)); }
+html[data-deps] .card.dep-hot { background-color: color-mix(in srgb, var(--link) var(--dep-tint), var(--card)); outline: 2px dashed var(--link); outline-offset: -2px; }
+.card[data-dep-hidden]::after { content: attr(data-dep-hidden); position: absolute; right: 12px; bottom: 6px; color: var(--muted); font-size: 11px; }
+.card:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.blocks { display: inline-flex; align-items: center; gap: 4px; color: var(--danger); font-size: 12px; font-weight: 500; }
+.blocks .icon svg { width: 12px; height: 12px; }
+#dep-legend { display: none; flex-wrap: wrap; gap: 4px 18px; padding: 0 24px 10px; color: var(--muted); font-size: 12px; }
+html[data-deps] #dep-legend { display: flex; }
+#dep-legend span { display: inline-flex; align-items: center; gap: 6px; }
+#dep-legend i { width: 4px; height: 14px; border-radius: 2px; }
+#dep-legend .w { background: repeating-linear-gradient(180deg, var(--waits) 0 6px, transparent 6px 9px); }
+#dep-legend .b { background: var(--danger); }
+#human-only:focus-visible, #deps:focus-visible, #view:focus-visible, #network:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 .card.selected { box-shadow: inset 0 0 0 2px var(--link); }
 .marquee { position: fixed; z-index: 9; pointer-events: none; background: color-mix(in srgb, var(--link) 15%, transparent); }
 .bulk { padding-left: 14px; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 16px); }
@@ -591,9 +617,11 @@ html:not(.ready) aside { visibility: hidden; }
     </span>
     <button class="ghost" id="view" title="Show as a list" aria-label="Show as a list" aria-pressed="false" hidden><span class="icon" data-icon="list"></span></button>
     <button class="ghost" id="human-only" title="Show only human tasks (h)" aria-label="Show only human tasks" aria-pressed="false" hidden><span class="icon" data-icon="human"></span></button>
+    <button class="ghost" id="deps" title="Show dependencies (d)" aria-label="Show dependencies" aria-pressed="false" hidden><span class="icon" data-icon="deps"></span></button>
     <button class="ghost" id="network" aria-haspopup="dialog" aria-controls="network-menu"></button>
     <button class="btn primary" id="new-task" title="New task (n)" hidden><span class="icon" data-icon="plus"></span>New task</button>
   </header>
+  <div id="dep-legend"><span><i class="w"></i>Waits on another task</span><span><i class="b"></i>Blocks another task</span><span>Hover, focus or open a task to trace its links</span></div>
   <div class="columns" id="columns"></div>
   <div class="list" id="list" hidden></div>
 </main>
